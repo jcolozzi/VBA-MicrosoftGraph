@@ -31,6 +31,8 @@ Option Explicit
 Public AuthorizationUrl As String
 Private Const auth_RedirectUrl As String = "https://login.microsoftonline.com/common/oauth2/nativeclient"
 Private sSessionID As String
+Private pRefreshToken As String
+Private pTokenExpiry As Date
 
 ' --------------------------------------------- '
 ' Properties
@@ -41,10 +43,14 @@ Public TenantID As String
 Public ApiKey As String
 Public AuthorizationCode As String
 Public ClientSecret As String
-Public Token As String
+Private pToken As String
 Public Scopes As Variant
 Public WaitForLogin As Integer
 Public GrantType As String
+
+Public Property Get Token() As String
+    Token = pToken
+End Property
 
 ' ============================================= '
 ' Public Methods
@@ -73,7 +79,9 @@ End Sub
 ''
 Public Sub ClearCodes()
     Me.AuthorizationCode = ""
-    Me.Token = ""
+    pToken = ""
+    pRefreshToken = ""
+    pTokenExpiry = 0
 End Sub
 
 
@@ -263,7 +271,9 @@ End Sub
 ''
 Public Sub Logout()
     Me.AuthorizationCode = ""
-    Me.Token = ""
+    pToken = ""
+    pRefreshToken = ""
+    pTokenExpiry = 0
     
     Dim auth_IE As Object
     DoCmd.OpenForm "EdgeForm"
@@ -309,18 +319,28 @@ End Sub
 ' @param in|out {WebRequest} Request The request about to be executed
 ''
 Private Sub IWebAuthenticator_BeforeExecute(ByVal Client As WebClient, ByRef Request As WebRequest)
+    ' Proactively refresh if token is about to expire
+    If pToken <> "" And pRefreshToken <> "" And Now > pTokenExpiry Then
+        Dim sRefreshed As String
+        sRefreshed = Me.RefreshToken(Client)
+        If sRefreshed = "" Then
+            ' Refresh failed, clear for re-login
+            pToken = ""
+        End If
+    End If
+    
     If Me.Token = "" Then
         If GrantType = "authorization_code" Then
             If Me.AuthorizationCode = "" Then
                 Me.Login
             End If
             If Me.AuthorizationCode <> "" Then
-                Me.Token = Me.GetToken(Client)
+                pToken = Me.GetToken(Client)
             Else
                 Exit Sub
             End If
         Else
-            Me.Token = Me.GetToken(Client)
+            pToken = Me.GetToken(Client)
         End If
     End If
 
@@ -336,7 +356,25 @@ End Sub
 ' @param in|out {WebResponse} Response to request
 ''
 Private Sub IWebAuthenticator_AfterExecute(ByVal Client As WebClient, ByVal Request As WebRequest, ByRef Response As WebResponse)
-    ' e.g. Handle 401 Unauthorized or other issues
+    ' Structured error parsing for 401 Unauthorized (replaces fragile InStr "expired" pattern)
+    If Response.StatusCode = WebStatusCode.Unauthorized Then
+        If Not Response.Data Is Nothing Then
+            If Response.Data.Exists("error") Then
+                If TypeName(Response.Data("error")) = "Dictionary" Then
+                    Dim oError As Object
+                    Set oError = Response.Data("error")
+                    If oError.Exists("code") Then
+                        If oError("code") = "InvalidAuthenticationToken" Then
+                            ' Token expired or invalid — clear for re-login on next request
+                            pToken = ""
+                            pRefreshToken = ""
+                            pTokenExpiry = 0
+                        End If
+                    End If
+                End If
+            End If
+        End If
+    End If
 End Sub
 
 ''
@@ -371,6 +409,12 @@ End Sub
 Public Function GetToken(Client As WebClient) As String
     On Error GoTo auth_Cleanup
     
+    ' ROPC (grant_type=password) is deprecated by Microsoft and does not support MFA
+    If GrantType = "password" Then
+        Err.Raise 11043 + vbObjectError, "GraphAuthenticator.GetToken", _
+            "ROPC flow (grant_type=password) is not supported. Use authorization_code or client_credentials."
+    End If
+    
     Dim auth_TokenClient As WebClient
     Dim auth_Request As New WebRequest
     Dim auth_Body As New Dictionary
@@ -388,7 +432,7 @@ Public Function GetToken(Client As WebClient) As String
     auth_Request.ResponseFormat = WebFormat.JSON
     
     auth_Body.Add "client_id", Me.ClientId
-    auth_Body.Add "scope", Me.Scopes(1)
+    auth_Body.Add "scope", VBA.Join(Me.Scopes, " ")
     auth_Body.Add "redirect_uri", auth_RedirectUrl
     auth_Body.Add "grant_type", GrantType
     If GrantType = "authorization_code" Then
@@ -401,10 +445,16 @@ Public Function GetToken(Client As WebClient) As String
     Set auth_Response = auth_TokenClient.Execute(auth_Request)
     
     If auth_Response.StatusCode = WebStatusCode.OK Then
-        GetToken = auth_Response.Data("access_token")
-'        GetToken = auth_Response.Data("refresh_token")
-'       auth_Response.Data("expires_in") tells you the number of seconds the token is good for
-     Else
+        pToken = auth_Response.Data("access_token")
+        GetToken = pToken
+        If auth_Response.Data.Exists("refresh_token") Then
+            pRefreshToken = auth_Response.Data("refresh_token")
+        End If
+        If auth_Response.Data.Exists("expires_in") Then
+            ' Refresh 5 minutes before actual expiry
+            pTokenExpiry = Now + TimeSerial(0, 0, CLng(auth_Response.Data("expires_in")) - 300)
+        End If
+    Else
         Err.Raise 11041 + vbObjectError, "GraphAuthenticator.GetToken", _
             auth_Response.StatusCode & ": " & auth_Response.Content
     End If
@@ -429,6 +479,160 @@ auth_Cleanup:
         WebHelpers.LogError auth_ErrorDescription, "GraphAuthenticator.GetToken", 11041 + vbObjectError
         Err.Raise 11041 + vbObjectError, "GraphAuthenticator.GetToken", auth_ErrorDescription
     End If
+End Function
+
+''
+' Refresh the access token using the stored refresh token
+'
+' @param {WebClient} Client
+' @return {String} New access token, or empty string on failure
+''
+Public Function RefreshToken(Client As WebClient) As String
+    Dim auth_Client As New WebClient
+    auth_Client.BaseUrl = "https://login.microsoftonline.com"
+    
+    Dim auth_Request As New WebRequest
+    auth_Request.Resource = "/{TenantID}/oauth2/v2.0/token"
+    auth_Request.AddUrlSegment "TenantID", Me.TenantID
+    auth_Request.Method = WebMethod.HttpPost
+    auth_Request.RequestFormat = WebFormat.FormUrlEncoded
+    auth_Request.ResponseFormat = WebFormat.Json
+    
+    auth_Request.AddBodyParameter "client_id", Me.ClientId
+    auth_Request.AddBodyParameter "client_secret", Me.ClientSecret
+    auth_Request.AddBodyParameter "grant_type", "refresh_token"
+    auth_Request.AddBodyParameter "refresh_token", pRefreshToken
+    auth_Request.AddBodyParameter "scope", VBA.Join(Me.Scopes, " ")
+    
+    Dim auth_Response As WebResponse
+    Set auth_Response = auth_Client.Execute(auth_Request)
+    
+    If auth_Response.StatusCode = WebStatusCode.Ok Then
+        pToken = auth_Response.Data("access_token")
+        If auth_Response.Data.Exists("refresh_token") Then
+            pRefreshToken = auth_Response.Data("refresh_token")
+        End If
+        If auth_Response.Data.Exists("expires_in") Then
+            pTokenExpiry = Now + TimeSerial(0, 0, CLng(auth_Response.Data("expires_in")) - 300)
+        End If
+        RefreshToken = pToken
+    Else
+        ' Refresh failed — clear tokens, force re-login
+        pToken = ""
+        pRefreshToken = ""
+        pTokenExpiry = 0
+        RefreshToken = ""
+    End If
+End Function
+
+''
+' Login using OAuth2 Device Code Flow
+' VBA equivalent of Connect-MgGraph -UseDeviceAuthentication
+'
+' @param {WebClient} Client
+' @return {Boolean} True if login succeeded
+''
+Public Function LoginWithDeviceCode(Client As WebClient) As Boolean
+    ' Step 1: Request device code
+    Dim auth_Client As New WebClient
+    auth_Client.BaseUrl = "https://login.microsoftonline.com"
+    
+    Dim auth_Request As New WebRequest
+    auth_Request.Resource = "/{TenantID}/oauth2/v2.0/devicecode"
+    auth_Request.AddUrlSegment "TenantID", Me.TenantID
+    auth_Request.Method = WebMethod.HttpPost
+    auth_Request.RequestFormat = WebFormat.FormUrlEncoded
+    auth_Request.ResponseFormat = WebFormat.Json
+    
+    auth_Request.AddBodyParameter "client_id", Me.ClientId
+    auth_Request.AddBodyParameter "scope", VBA.Join(Me.Scopes, " ")
+    
+    Dim auth_Response As WebResponse
+    Set auth_Response = auth_Client.Execute(auth_Request)
+    
+    If auth_Response.StatusCode <> WebStatusCode.Ok Then
+        Err.Raise vbObjectError + 11044, "GraphAuthenticator.LoginWithDeviceCode", _
+            "Failed to get device code: " & auth_Response.Content
+    End If
+    
+    Dim sDeviceCode As String
+    Dim sUserCode As String
+    Dim sVerificationUri As String
+    Dim lInterval As Long
+    Dim lExpiresIn As Long
+    
+    sDeviceCode = auth_Response.Data("device_code")
+    sUserCode = auth_Response.Data("user_code")
+    sVerificationUri = auth_Response.Data("verification_uri")
+    lInterval = CLng(auth_Response.Data("interval"))
+    lExpiresIn = CLng(auth_Response.Data("expires_in"))
+    
+    ' Step 2: Show user the code
+    MsgBox "To sign in, open a browser and go to:" & vbCrLf & vbCrLf & _
+           sVerificationUri & vbCrLf & vbCrLf & _
+           "Enter the code: " & sUserCode & vbCrLf & vbCrLf & _
+           "This code expires in " & lExpiresIn \ 60 & " minutes.", _
+           vbInformation, "Microsoft Graph Sign-In"
+    
+    ' Step 3: Poll for token
+    Dim dtExpiry As Date
+    Dim dtWaitUntil As Date
+    dtExpiry = Now + TimeSerial(0, 0, lExpiresIn)
+    
+    Do While Now < dtExpiry
+        ' Wait for polling interval (Access-compatible; no Application.Wait)
+        dtWaitUntil = Now + TimeSerial(0, 0, lInterval)
+        Do While Now < dtWaitUntil
+            DoEvents
+        Loop
+        
+        Set auth_Request = New WebRequest
+        auth_Request.Resource = "/{TenantID}/oauth2/v2.0/token"
+        auth_Request.AddUrlSegment "TenantID", Me.TenantID
+        auth_Request.Method = WebMethod.HttpPost
+        auth_Request.RequestFormat = WebFormat.FormUrlEncoded
+        auth_Request.ResponseFormat = WebFormat.Json
+        
+        auth_Request.AddBodyParameter "client_id", Me.ClientId
+        auth_Request.AddBodyParameter "grant_type", "urn:ietf:params:oauth:grant-type:device_code"
+        auth_Request.AddBodyParameter "device_code", sDeviceCode
+        
+        Set auth_Response = auth_Client.Execute(auth_Request)
+        
+        If auth_Response.StatusCode = WebStatusCode.Ok Then
+            ' Success
+            pToken = auth_Response.Data("access_token")
+            If auth_Response.Data.Exists("refresh_token") Then
+                pRefreshToken = auth_Response.Data("refresh_token")
+            End If
+            If auth_Response.Data.Exists("expires_in") Then
+                pTokenExpiry = Now + TimeSerial(0, 0, CLng(auth_Response.Data("expires_in")) - 300)
+            End If
+            LoginWithDeviceCode = True
+            Exit Function
+        End If
+        
+        ' Check for polling status
+        If auth_Response.Data.Exists("error") Then
+            Select Case auth_Response.Data("error")
+                Case "authorization_pending"
+                    ' User hasn't authorized yet, keep polling
+                Case "slow_down"
+                    ' Increase interval per spec
+                    lInterval = lInterval + 5
+                Case "expired_token"
+                    ' Device code expired
+                    Exit Do
+                Case Else
+                    ' Unexpected error
+                    Err.Raise vbObjectError + 11045, "GraphAuthenticator.LoginWithDeviceCode", _
+                        "Device code auth error: " & auth_Response.Data("error") & " - " & _
+                        auth_Response.Data("error_description")
+            End Select
+        End If
+    Loop
+    
+    LoginWithDeviceCode = False
 End Function
 
 ''
@@ -557,7 +761,7 @@ End Function
 
 
 Private Sub Class_Initialize()
-    Me.Scopes = Array("")
+    Me.Scopes = Array("offline_access")
 End Sub
 
 

@@ -131,7 +131,7 @@ Public Function GetToken(auth_Client As WebClient) As String
     
     auth_Request.AddQuerystringParam "grant_type", "password"
     auth_Request.AddQuerystringParam "client_id", Me.ClientId
-    auth_Request.AddQuerystringParam "client_secret", Me.ClientSecret
+    auth_Request.AddBodyParameter "client_secret", Me.ClientSecret
     auth_Request.AddQuerystringParam "username", Me.Username
     auth_Request.AddQuerystringParam "password", Me.Password
     
