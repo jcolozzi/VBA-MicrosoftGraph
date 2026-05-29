@@ -13,6 +13,7 @@ VBA-MicrosoftGraph makes working with the [Microsoft Graph REST API](https://lea
 | `CreateDraftMessage` | Create a draft message with To/CC/BCC recipients and file attachments |
 | `SendDraft` | Send a previously created draft by message ID |
 | `GraphSendMail` | Compose and send a message in a single call |
+| `SendMailAs` | Send email as / on behalf of another address |
 | `ListMessages` | List messages in a mail folder with optional `$select` projection |
 | `DeleteMessage` | Delete a message by ID |
 | `GetMailFolderID` | Resolve a mail folder name to its Graph ID |
@@ -23,6 +24,7 @@ VBA-MicrosoftGraph makes working with the [Microsoft Graph REST API](https://lea
 | --- | --- |
 | `CreateEvent` | Create a calendar event with attendees, location, and recurrence support |
 | `ListEvents` | List events with optional date-range (`calendarView`) and `$select` |
+| `UpdateEvent` | PATCH fields on an existing calendar event |
 | `DeleteEvent` | Delete an event by ID |
 | `GetCalendarGroupID` | Resolve a calendar group name to its Graph ID |
 | `GetCalendarID` | Resolve a calendar name to its Graph ID |
@@ -33,6 +35,7 @@ VBA-MicrosoftGraph makes working with the [Microsoft Graph REST API](https://lea
 | --- | --- |
 | `CreateContact` | Create a contact in a specified folder |
 | `ListContacts` | List contacts with optional `$select` projection |
+| `UpdateContact` | PATCH fields on an existing contact |
 | `GetContactFolderID` | Resolve a contact folder name to its Graph ID |
 
 ### Groups
@@ -40,6 +43,44 @@ VBA-MicrosoftGraph makes working with the [Microsoft Graph REST API](https://lea
 | Function | Description |
 | --- | --- |
 | `GetGroupID` | Find a group by display name using server-side `$filter` |
+
+### User Profile & Directory
+
+| Function | Description |
+| --- | --- |
+| `GetCurrentUser` | Get the signed-in user's profile (`/me`) |
+| `ListGroupMembership` | List groups and roles a user belongs to |
+| `GetManager` | Get a user's manager |
+| `ListDirectReports` | List a user's direct reports |
+
+### Tasks & Planner
+
+| Function | Description |
+| --- | --- |
+| `CreateTask` | Create a To-Do task with optional body and due date |
+| `ListPlannerTasks` | List the user's Planner tasks |
+
+### Teams & Online Meetings
+
+| Function | Description |
+| --- | --- |
+| `ListJoinedTeams` | List teams the user has joined |
+| `ListTeamsChannels` | List channels in a team |
+| `CreateOnlineMeeting` | Create a Teams online meeting |
+
+### SharePoint & OneDrive
+
+| Function | Description |
+| --- | --- |
+| `ListSharePointSites` | Search for SharePoint sites |
+| `SearchOneDrive` | Search files in a user's OneDrive |
+| `SearchSharePoint` | Search across SharePoint and OneDrive via `/search/query` |
+
+### OneNote
+
+| Function | Description |
+| --- | --- |
+| `ListOneNoteNotebooks` | List a user's OneNote notebooks |
 
 ### Configuration
 
@@ -125,6 +166,7 @@ Set oResponse = CreateEvent( _
 ```text
 ├── Src/
 │   ├── Graph.bas                   Main API — all Graph operations
+│   ├── PKCE.bas                    Proof Key for Code Exchange (RFC 7636)
 │   ├── AttachmentHelpers.bas       Base64 encoding for file attachments
 │   ├── TimeZoneHelpers.bas         Windows ↔ IANA time zone mapping
 │   ├── WebHelpers.bas              VBA-Web utilities
@@ -145,6 +187,33 @@ Set oResponse = CreateEvent( _
 ├── EVALUATION.md                   Technical audit and change log
 └── LICENSE                         MIT License
 ```
+
+## What's New in v2.2
+
+### Expanded API Coverage
+
+- **User & Directory** — `GetCurrentUser`, `ListGroupMembership`, `GetManager`, `ListDirectReports`
+- **Tasks & Planner** — `CreateTask` (To-Do), `ListPlannerTasks`
+- **Teams** — `ListJoinedTeams`, `ListTeamsChannels`, `CreateOnlineMeeting`
+- **SharePoint & OneDrive** — `ListSharePointSites`, `SearchOneDrive`, `SearchSharePoint` (via `/search/query` POST)
+- **OneNote** — `ListOneNoteNotebooks`
+- **Mail** — `SendMailAs` (send as / on behalf of another address)
+- **PATCH operations** — `UpdateEvent`, `UpdateContact` for partial updates
+
+### PKCE Support (RFC 7636)
+
+- New `PKCE.bas` module with SHA-256 via Windows CryptoAPI + Base64URL encoding
+- `EnablePKCE()` / `DisablePKCE()` toggle PKCE for the authorization code flow
+- When enabled, `code_challenge` (S256) is appended to the authorization URL
+- Token exchange sends `code_verifier` instead of `client_secret`
+- Eliminates the need for a client secret in public client apps
+
+### Utility Helpers
+
+- `EscapeJsonString()` — safe JSON string escaping (correct backslash-first order)
+- `BuildResourcePath()` — auto-switches `/me` vs `/users/{UPN}` based on grant type
+
+---
 
 ## What's New in v2.1
 

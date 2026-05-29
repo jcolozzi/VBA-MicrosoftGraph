@@ -993,4 +993,468 @@ Public Function ListEvents(sUserPrincipal As String, _
 End Function
 
 
+' =============================================================================
+' Utility Helpers
+' =============================================================================
+
+Private Function EscapeJsonString(sInput As String) As String
+    ' Escapes special characters for JSON embedding.
+    ' CRITICAL: Escape order matters — backslash FIRST to avoid double-escaping.
+    If Len(sInput) = 0 Then Exit Function
+    
+    Dim sOutput As String
+    sOutput = sInput
+    sOutput = Replace(sOutput, "\", "\\")       ' 1. Backslash first
+    sOutput = Replace(sOutput, """", "\""")      ' 2. Double quote
+    sOutput = Replace(sOutput, vbCrLf, "\r\n")   ' 3. CRLF pair before individual
+    sOutput = Replace(sOutput, vbCr, "\r")        ' 4. Carriage return
+    sOutput = Replace(sOutput, vbLf, "\n")        ' 5. Line feed
+    sOutput = Replace(sOutput, vbTab, "\t")       ' 6. Tab
+    EscapeJsonString = sOutput
+End Function
+
+Private Function BuildResourcePath(sUserPrincipal As String) As String
+    ' Builds user-scoped resource path: /me (auth_code) or /users/{UPN} (client_creds)
+    If pGrantType = "" Then pGrantType = DLookup("GrantType", "AdminTable")
+    If pGrantType = "authorization_code" Then
+        BuildResourcePath = "/me"
+    Else
+        BuildResourcePath = "/users/" & sUserPrincipal
+    End If
+End Function
+
+
+' =============================================================================
+' User Profile & Directory
+' =============================================================================
+
+Public Function GetCurrentUser(Optional sSelectFields As String = "") As WebResponse
+    ' GET /me — Returns the signed-in user's profile
+    ' Scope: User.Read
+    Dim Request As New WebRequest
+    Request.Resource = "/me"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Set GetCurrentUser = Client.Execute(Request)
+End Function
+
+Public Function ListGroupMembership(sUserPrincipal As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /me/memberOf — List groups/roles the user belongs to
+    ' Scope: GroupMember.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/memberOf"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Set ListGroupMembership = Client.Execute(Request)
+End Function
+
+Public Function GetManager(sUserPrincipal As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /me/manager — Returns the user's manager
+    ' Scope: User.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/manager"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Set GetManager = Client.Execute(Request)
+End Function
+
+Public Function ListDirectReports(sUserPrincipal As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /me/directReports — Lists the user's direct reports
+    ' Scope: User.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/directReports"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Set ListDirectReports = Client.Execute(Request)
+End Function
+
+
+' =============================================================================
+' Tasks & Planner
+' =============================================================================
+
+Public Function CreateTask(sTitle As String, Optional sBodyContent As String = "", _
+    Optional sDueDate As String = "", Optional sImportance As String = "normal") As WebResponse
+    ' POST /me/todo/lists/Tasks/tasks — Creates a To-Do task
+    ' Scope: Tasks.ReadWrite
+    Dim Request As New WebRequest
+    Request.Resource = "/me/todo/lists/Tasks/tasks"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Request.AddBodyParameter "title", sTitle
+    Request.AddBodyParameter "importance", sImportance
+    
+    If Len(sBodyContent) > 0 Then
+        Dim dictBody As New Dictionary
+        dictBody.Add "contentType", "text"
+        dictBody.Add "content", sBodyContent
+        Request.AddBodyParameter "body", dictBody
+    End If
+    
+    If Len(sDueDate) > 0 Then
+        Dim dictDue As New Dictionary
+        dictDue.Add "dateTime", sDueDate
+        dictDue.Add "timeZone", "UTC"
+        Request.AddBodyParameter "dueDateTime", dictDue
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set CreateTask = Client.Execute(Request)
+        If CreateTask.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(CreateTask))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(CreateTask) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11050, "Graph.CreateTask", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ListPlannerTasks(Optional sSelectFields As String = "") As WebResponse
+    ' GET /me/planner/tasks — Lists the user's Planner tasks
+    ' Scope: Tasks.Read
+    Dim Request As New WebRequest
+    Request.Resource = "/me/planner/tasks"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Set ListPlannerTasks = Client.Execute(Request)
+End Function
+
+
+' =============================================================================
+' Teams & Online Meetings
+' =============================================================================
+
+Public Function ListJoinedTeams(Optional sSelectFields As String = "") As WebResponse
+    ' GET /me/joinedTeams — Lists teams the user has joined
+    ' Scope: Team.ReadBasic.All
+    Dim Request As New WebRequest
+    Request.Resource = "/me/joinedTeams"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Set ListJoinedTeams = Client.Execute(Request)
+End Function
+
+Public Function ListTeamsChannels(sTeamId As String) As WebResponse
+    ' GET /teams/{TeamId}/channels — Lists channels in a team
+    ' Scope: Channel.ReadBasic.All
+    Dim Request As New WebRequest
+    Request.Resource = "/teams/{TeamId}/channels"
+    Request.AddUrlSegment "TeamId", sTeamId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Set ListTeamsChannels = Client.Execute(Request)
+End Function
+
+Public Function CreateOnlineMeeting(sSubject As String, dtStart As Date, dtEnd As Date, _
+    Optional sTimeZone As String = "UTC") As WebResponse
+    ' POST /me/onlineMeetings — Creates a Teams online meeting
+    ' Scope: OnlineMeetings.ReadWrite
+    ' Returns: WebResponse with joinWebUrl in response data
+    Dim Request As New WebRequest
+    Request.Resource = "/me/onlineMeetings"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Request.AddBodyParameter "subject", sSubject
+    Request.AddBodyParameter "startDateTime", Format(dtStart, "yyyy-mm-dd\Thh:nn:ss")
+    Request.AddBodyParameter "endDateTime", Format(dtEnd, "yyyy-mm-dd\Thh:nn:ss")
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set CreateOnlineMeeting = Client.Execute(Request)
+        If CreateOnlineMeeting.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(CreateOnlineMeeting))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(CreateOnlineMeeting) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11050, "Graph.CreateOnlineMeeting", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+
+' =============================================================================
+' SharePoint & OneDrive
+' =============================================================================
+
+Public Function ListSharePointSites(sSearchQuery As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /sites?search={query} — Search for SharePoint sites
+    ' Scope: Sites.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = "/sites"
+    Request.AddQuerystringParam "search", sSearchQuery
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Set ListSharePointSites = Client.Execute(Request)
+End Function
+
+Public Function SearchOneDrive(sUserPrincipal As String, sQuery As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /me/drive/root/search(q='{query}') — Search files in OneDrive
+    ' Scope: Files.Read
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/drive/root/search(q='" & sQuery & "')"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Set SearchOneDrive = Client.Execute(Request)
+End Function
+
+Public Function SearchSharePoint(sQuery As String, _
+    Optional sEntityType As String = "driveItem", _
+    Optional lMaxResults As Long = 25) As WebResponse
+    ' POST /search/query — Search across SharePoint and OneDrive
+    ' Scope: Files.Read.All or Sites.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = "/search/query"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim dictQuery As New Dictionary
+    dictQuery.Add "queryString", sQuery
+    
+    Dim colEntityTypes As New Collection
+    colEntityTypes.Add sEntityType
+    
+    Dim dictRequest As New Dictionary
+    dictRequest.Add "entityTypes", colEntityTypes
+    dictRequest.Add "query", dictQuery
+    dictRequest.Add "from", 0
+    dictRequest.Add "size", lMaxResults
+    
+    Dim colRequests As New Collection
+    colRequests.Add dictRequest
+    
+    Request.AddBodyParameter "requests", colRequests
+    
+    Set SearchSharePoint = Client.Execute(Request)
+End Function
+
+
+' =============================================================================
+' OneNote
+' =============================================================================
+
+Public Function ListOneNoteNotebooks(sUserPrincipal As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /me/onenote/notebooks — Lists OneNote notebooks
+    ' Scope: Notes.Read
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/onenote/notebooks"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Set ListOneNoteNotebooks = Client.Execute(Request)
+End Function
+
+
+' =============================================================================
+' Send As / On Behalf Of
+' =============================================================================
+
+Public Function SendMailAs(sUserPrincipal As String, sSendAs As String, _
+    sSubject As String, sBodyType As String, sBodyContent As String, _
+    sToRecipients As String, _
+    Optional sCcRecipients As String = "", _
+    Optional sBccRecipients As String = "", _
+    Optional sAttachmentPath As String = "") As WebResponse
+    ' POST /me/sendMail — Send email as/on behalf of another address
+    ' Scope: Mail.Send
+    ' sSendAs: email address to send from (empty = send as self)
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/sendMail"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim dictMessage As New Dictionary
+    
+    ' Add "from" field for Send As
+    If Len(sSendAs) > 0 Then
+        Dim dictFromAddr As New Dictionary
+        dictFromAddr.Add "address", sSendAs
+        Dim dictFrom As New Dictionary
+        dictFrom.Add "emailAddress", dictFromAddr
+        dictMessage.Add "from", dictFrom
+    End If
+    
+    dictMessage.Add "subject", sSubject
+    
+    Dim dictBody As New Dictionary
+    dictBody.Add "contentType", sBodyType
+    dictBody.Add "content", sBodyContent
+    dictMessage.Add "body", dictBody
+    
+    Dim colToRecipients As New Collection
+    FillEmailAddressCollection colToRecipients, sToRecipients
+    dictMessage.Add "toRecipients", colToRecipients
+    
+    If Len(Trim(sCcRecipients)) > 0 Then
+        Dim colCc As New Collection
+        FillEmailAddressCollection colCc, sCcRecipients
+        dictMessage.Add "ccRecipients", colCc
+    End If
+    
+    If Len(Trim(sBccRecipients)) > 0 Then
+        Dim colBcc As New Collection
+        FillEmailAddressCollection colBcc, sBccRecipients
+        dictMessage.Add "bccRecipients", colBcc
+    End If
+    
+    If Len(Trim(sAttachmentPath)) > 0 Then
+        Dim colAttachments As New Collection
+        FillAttachmentCollection colAttachments, sAttachmentPath
+        dictMessage.Add "attachments", colAttachments
+    End If
+    
+    Request.AddBodyParameter "message", dictMessage
+    Request.AddBodyParameter "saveToSentItems", True
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set SendMailAs = Client.Execute(Request)
+        If SendMailAs.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(SendMailAs))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(SendMailAs) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11050, "Graph.SendMailAs", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+
+' =============================================================================
+' PATCH Operations (Update)
+' =============================================================================
+
+Public Function UpdateEvent(sUserPrincipal As String, sEventId As String, _
+    dictUpdates As Dictionary) As WebResponse
+    ' PATCH /me/events/{EventId} — Update fields on a calendar event
+    ' Scope: Calendars.ReadWrite
+    ' dictUpdates: Dictionary of field names → new values
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/events/" & sEventId
+    Request.Method = WebMethod.HttpPatch
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim vKey As Variant
+    For Each vKey In dictUpdates.Keys
+        Request.AddBodyParameter CStr(vKey), dictUpdates(vKey)
+    Next vKey
+    
+    Set UpdateEvent = Client.Execute(Request)
+End Function
+
+Public Function UpdateContact(sUserPrincipal As String, sContactId As String, _
+    dictUpdates As Dictionary) As WebResponse
+    ' PATCH /me/contacts/{ContactId} — Update fields on a contact
+    ' Scope: Contacts.ReadWrite
+    ' dictUpdates: Dictionary of field names → new values
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/contacts/" & sContactId
+    Request.Method = WebMethod.HttpPatch
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim vKey As Variant
+    For Each vKey In dictUpdates.Keys
+        Request.AddBodyParameter CStr(vKey), dictUpdates(vKey)
+    Next vKey
+    
+    Set UpdateContact = Client.Execute(Request)
+End Function
+
 

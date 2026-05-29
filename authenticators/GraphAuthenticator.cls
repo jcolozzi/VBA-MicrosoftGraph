@@ -437,6 +437,12 @@ Public Function GetToken(Client As WebClient) As String
     auth_Body.Add "grant_type", GrantType
     If GrantType = "authorization_code" Then
         auth_Body.Add "code", Me.AuthorizationCode
+        ' PKCE: Send code_verifier instead of client_secret
+        If PKCE.IsPKCEEnabled Then
+            auth_Body.Add "code_verifier", PKCE.GetCodeVerifier()
+        Else
+            auth_Body.Add "client_secret", Me.ClientSecret
+        End If
     Else
         auth_Body.Add "client_secret", Me.ClientSecret
     End If
@@ -499,7 +505,10 @@ Public Function RefreshToken(Client As WebClient) As String
     auth_Request.ResponseFormat = WebFormat.Json
     
     auth_Request.AddBodyParameter "client_id", Me.ClientId
-    auth_Request.AddBodyParameter "client_secret", Me.ClientSecret
+    ' PKCE: Omit client_secret when using PKCE
+    If Not PKCE.IsPKCEEnabled Then
+        auth_Request.AddBodyParameter "client_secret", Me.ClientSecret
+    End If
     auth_Request.AddBodyParameter "grant_type", "refresh_token"
     auth_Request.AddBodyParameter "refresh_token", pRefreshToken
     auth_Request.AddBodyParameter "scope", VBA.Join(Me.Scopes, " ")
@@ -656,6 +665,13 @@ Public Function GetLoginUrl() As String
         auth_Request.AddQuerystringParam "scope", VBA.Join(Me.Scopes, " ")
     Else
         auth_Request.AddQuerystringParam "scope", ""
+    End If
+    
+    ' PKCE: Append code_challenge if enabled
+    If PKCE.IsPKCEEnabled Then
+        PKCE.GeneratePKCEPair
+        auth_Request.AddQuerystringParam "code_challenge", PKCE.GetCodeChallenge()
+        auth_Request.AddQuerystringParam "code_challenge_method", "S256"
     End If
     
     GetLoginUrl = auth_Request.FormattedResource
