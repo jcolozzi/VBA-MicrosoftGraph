@@ -50,12 +50,22 @@ VBA-MicrosoftGraph makes working with the [Microsoft Graph REST API](https://lea
 | `ListContacts` | List contacts with optional `$select` projection |
 | `UpdateContact` | PATCH fields on an existing contact |
 | `GetContactFolderID` | Resolve a contact folder name to its Graph ID |
+| `GetContact` | Read a single contact by ID with optional `$select` |
+| `DeleteContact` | Delete a contact by ID |
+| `ListContactFolders` | List all contact folders with optional `$select` |
+| `CreateContactFolder` | Create a contact folder (supports nested child folders) |
 
 ### Groups
 
 | Function | Description |
 | --- | --- |
 | `GetGroupID` | Find a group by display name using server-side `$filter` |
+| `ListGroups` | List/search groups with `$filter`, `$search`, `$select`, `$top` |
+| `GetGroup` | Read a single group by ID with optional `$select` |
+| `ListGroupMembers` | List direct members of a group with `$select` and `$top` |
+| `ListGroupOwners` | List owners of a group with optional `$select` |
+| `AddGroupMember` | Add a user/service principal to a group |
+| `RemoveGroupMember` | Remove a member from a group |
 
 ### User Profile & Directory
 
@@ -65,6 +75,9 @@ VBA-MicrosoftGraph makes working with the [Microsoft Graph REST API](https://lea
 | `ListGroupMembership` | List groups and roles a user belongs to |
 | `GetManager` | Get a user's manager |
 | `ListDirectReports` | List a user's direct reports |
+| `GetUser` | Get any user's profile by ID or UPN |
+| `ListUsers` | List/search directory users with `$filter`, `$search`, `$select`, `$top` |
+| `ListPeople` | List people relevant to a user (ranked by communication patterns) |
 
 ### Tasks & Planner
 
@@ -218,6 +231,40 @@ Set oResponse = CreateEvent( _
 ├── EVALUATION.md                   Technical audit and change log
 └── LICENSE                         MIT License
 ```
+
+## What's New in v2.6
+
+### Contacts — Read & Manage
+
+- **Read** — `GetContact` retrieves a single contact by ID with optional `$select` field projection
+- **Delete** — `DeleteContact` removes a contact by ID
+- **Folders** — `ListContactFolders` lists all contact folders; `CreateContactFolder` creates new folders (supports nested child folders via `sParentFolderId`)
+
+### Groups — Read & Manage Members
+
+- **List** — `ListGroups` searches/filters groups with `ConsistencyLevel: eventual` for advanced queries
+- **Read** — `GetGroup` retrieves a single group by ID with optional `$select`
+- **Members** — `ListGroupMembers` lists direct members; `AddGroupMember` adds a user; `RemoveGroupMember` removes a member
+- **Owners** — `ListGroupOwners` lists group owners
+
+### User Profile & Directory — Lookup
+
+- **Read** — `GetUser` retrieves any user's profile by ID or UPN (always uses `/users/{id}` regardless of grant type)
+- **Search** — `ListUsers` searches the directory with `$filter`, `$search`, `$select`, and `$top` (uses `ConsistencyLevel: eventual` for advanced queries)
+- **People** — `ListPeople` returns people ranked by communication relevance (useful for autocomplete and suggestions)
+
+### New OAuth Scopes
+
+- `User.Read.All` — read any user profile
+- `People.Read` — access relevance-ranked people list
+- `GroupMember.ReadWrite.All` — add/remove group members
+
+### Notes
+
+- All 13 functions include retry loops with 429 throttle handling and token refresh
+- Error numbers: 11260–11380 (non-overlapping with v2.5's 11130–11250)
+
+---
 
 ## What's New in v2.5
 

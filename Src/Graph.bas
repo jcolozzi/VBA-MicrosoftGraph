@@ -66,6 +66,9 @@ Public Property Get Client() As WebClient
             Auth.AddScope "sites.read.all"
             Auth.AddScope "sites.readwrite.all"
             Auth.AddScope "files.readwrite"
+            Auth.AddScope "user.read.all"
+            Auth.AddScope "people.read"
+            Auth.AddScope "groupmember.readwrite.all"
         Else
             Auth.AddScope ".default"
         End If
@@ -2582,5 +2585,526 @@ Public Function ForwardMessage(sUserPrincipal As String, sMessageId As String, _
     Wend
     If lRetryCount >= MAX_RETRIES Then
         Err.Raise vbObjectError + 11190, "Graph.ForwardMessage", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+
+' =============================================================================
+' Groups — Read & Manage Members
+' =============================================================================
+
+Public Function ListGroups(Optional sFilter As String = "", _
+    Optional sSearch As String = "", _
+    Optional sSelectFields As String = "", _
+    Optional lTop As Long = 100) As WebResponse
+    ' GET /groups — List all groups in the tenant
+    ' Scope: Group.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = "/groups"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sFilter) > 0 Or Len(sSearch) > 0 Then
+        Request.AddHeader "ConsistencyLevel", "eventual"
+    End If
+    
+    If Len(sFilter) > 0 Then
+        Request.AddQuerystringParam "$filter", sFilter
+    End If
+    If Len(sSearch) > 0 Then
+        Request.AddQuerystringParam "$search", Chr$(34) & sSearch & Chr$(34)
+        Request.AddQuerystringParam "$count", "true"
+    End If
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    If lTop > 0 Then
+        Request.AddQuerystringParam "$top", CStr(lTop)
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ListGroups = Client.Execute(Request)
+        If ListGroups.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ListGroups))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ListGroups) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11300, "Graph.ListGroups", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function GetGroup(sGroupId As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /groups/{GroupId} — Retrieve a single group by ID
+    ' Scope: Group.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = "/groups/{GroupId}"
+    Request.AddUrlSegment "GroupId", sGroupId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set GetGroup = Client.Execute(Request)
+        If GetGroup.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(GetGroup))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(GetGroup) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11310, "Graph.GetGroup", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ListGroupMembers(sGroupId As String, _
+    Optional sSelectFields As String = "", _
+    Optional lTop As Long = 100) As WebResponse
+    ' GET /groups/{GroupId}/members — List members of a group
+    ' Scope: GroupMember.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = "/groups/{GroupId}/members"
+    Request.AddUrlSegment "GroupId", sGroupId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    If lTop > 0 Then
+        Request.AddQuerystringParam "$top", CStr(lTop)
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ListGroupMembers = Client.Execute(Request)
+        If ListGroupMembers.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ListGroupMembers))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ListGroupMembers) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11320, "Graph.ListGroupMembers", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ListGroupOwners(sGroupId As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /groups/{GroupId}/owners — List owners of a group
+    ' Scope: GroupMember.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = "/groups/{GroupId}/owners"
+    Request.AddUrlSegment "GroupId", sGroupId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ListGroupOwners = Client.Execute(Request)
+        If ListGroupOwners.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ListGroupOwners))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ListGroupOwners) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11330, "Graph.ListGroupOwners", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function AddGroupMember(sGroupId As String, sUserId As String) As WebResponse
+    ' POST /groups/{GroupId}/members/$ref — Add a member to a group
+    ' Scope: GroupMember.ReadWrite.All
+    Dim Request As New WebRequest
+    Request.Resource = "/groups/{GroupId}/members/$ref"
+    Request.AddUrlSegment "GroupId", sGroupId
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Request.AddBodyParameter "@odata.id", "https://graph.microsoft.com/v1.0/directoryObjects/" & sUserId
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set AddGroupMember = Client.Execute(Request)
+        If AddGroupMember.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(AddGroupMember))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(AddGroupMember) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11340, "Graph.AddGroupMember", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function RemoveGroupMember(sGroupId As String, sMemberId As String) As WebResponse
+    ' DELETE /groups/{GroupId}/members/{MemberId}/$ref — Remove a member from a group
+    ' Scope: GroupMember.ReadWrite.All
+    Dim Request As New WebRequest
+    Request.Resource = "/groups/{GroupId}/members/{MemberId}/$ref"
+    Request.AddUrlSegment "GroupId", sGroupId
+    Request.AddUrlSegment "MemberId", sMemberId
+    Request.Method = WebMethod.HttpDelete
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set RemoveGroupMember = Client.Execute(Request)
+        If RemoveGroupMember.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(RemoveGroupMember))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(RemoveGroupMember) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11350, "Graph.RemoveGroupMember", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+
+' =============================================================================
+' Contacts — Read & Manage
+' =============================================================================
+
+Public Function GetContact(sUserPrincipal As String, sContactId As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /me/contacts/{id} — Retrieve a single contact by ID
+    ' Scope: Contacts.Read
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/contacts/" & sContactId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set GetContact = Client.Execute(Request)
+        If GetContact.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(GetContact))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(GetContact) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11260, "Graph.GetContact", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function DeleteContact(sUserPrincipal As String, sContactId As String) As WebResponse
+    ' DELETE /me/contacts/{id} — Delete a contact
+    ' Scope: Contacts.ReadWrite
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/contacts/" & sContactId
+    Request.Method = WebMethod.HttpDelete
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set DeleteContact = Client.Execute(Request)
+        If DeleteContact.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(DeleteContact))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(DeleteContact) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11270, "Graph.DeleteContact", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ListContactFolders(sUserPrincipal As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /me/contactFolders — List contact folders
+    ' Scope: Contacts.Read
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/contactFolders"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ListContactFolders = Client.Execute(Request)
+        If ListContactFolders.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ListContactFolders))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ListContactFolders) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11280, "Graph.ListContactFolders", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function CreateContactFolder(sUserPrincipal As String, sDisplayName As String, _
+    Optional sParentFolderId As String = "") As WebResponse
+    ' POST /me/contactFolders — Create a contact folder (or child folder)
+    ' Scope: Contacts.ReadWrite
+    Dim Request As New WebRequest
+    If Len(sParentFolderId) > 0 Then
+        Request.Resource = BuildResourcePath(sUserPrincipal) & "/contactFolders/" & sParentFolderId & "/childFolders"
+    Else
+        Request.Resource = BuildResourcePath(sUserPrincipal) & "/contactFolders"
+    End If
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    Request.AddBodyParameter "displayName", sDisplayName
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set CreateContactFolder = Client.Execute(Request)
+        If CreateContactFolder.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(CreateContactFolder))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(CreateContactFolder) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11290, "Graph.CreateContactFolder", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+
+' =============================================================================
+' User Profile & Directory — Lookup
+' =============================================================================
+
+Public Function GetUser(sUserIdOrUpn As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /users/{sUserIdOrUpn} — Retrieve a single user profile
+    ' Scope: User.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = "/users/" & sUserIdOrUpn
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set GetUser = Client.Execute(Request)
+        If GetUser.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(GetUser))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(GetUser) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11360, "Graph.GetUser", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ListUsers(Optional sFilter As String = "", _
+    Optional sSearch As String = "", _
+    Optional sSelectFields As String = "", _
+    Optional lTop As Long = 100) As WebResponse
+    ' GET /users — List users in the directory
+    ' Scope: User.ReadBasic.All
+    Dim Request As New WebRequest
+    Request.Resource = "/users"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sFilter) > 0 Or Len(sSearch) > 0 Then
+        Request.AddHeader "ConsistencyLevel", "eventual"
+    End If
+    
+    If Len(sFilter) > 0 Then
+        Request.AddQuerystringParam "$filter", sFilter
+    End If
+    
+    If Len(sSearch) > 0 Then
+        Request.AddQuerystringParam "$search", Chr$(34) & sSearch & Chr$(34)
+        Request.AddQuerystringParam "$count", "true"
+    End If
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    If lTop > 0 Then
+        Request.AddQuerystringParam "$top", CStr(lTop)
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ListUsers = Client.Execute(Request)
+        If ListUsers.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ListUsers))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ListUsers) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11370, "Graph.ListUsers", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ListPeople(sUserPrincipal As String, _
+    Optional sSelectFields As String = "", _
+    Optional lTop As Long = 0) As WebResponse
+    ' GET {BuildResourcePath}/people — List relevant people for a user
+    ' Scope: People.Read
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/people"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    If lTop > 0 Then
+        Request.AddQuerystringParam "$top", CStr(lTop)
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ListPeople = Client.Execute(Request)
+        If ListPeople.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ListPeople))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ListPeople) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11380, "Graph.ListPeople", "Max retries exceeded after " & MAX_RETRIES & " attempts"
     End If
 End Function
