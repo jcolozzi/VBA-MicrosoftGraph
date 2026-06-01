@@ -2071,3 +2071,516 @@ Public Function CopyDriveItem(sUserPrincipal As String, sItemId As String, _
         Err.Raise vbObjectError + 11120, "Graph.CopyDriveItem", "Max retries exceeded after " & MAX_RETRIES & " attempts"
     End If
 End Function
+
+
+' =============================================================================
+' Calendar — Read & RSVP
+' =============================================================================
+
+Public Function GetEvent(sUserPrincipal As String, sEventId As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /me/events/{id} — Get a single calendar event by ID
+    ' Scope: Calendars.Read
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/events/" & sEventId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set GetEvent = Client.Execute(Request)
+        If GetEvent.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(GetEvent))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(GetEvent) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11200, "Graph.GetEvent", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function AcceptEvent(sUserPrincipal As String, sEventId As String, _
+    Optional sComment As String = "", Optional bSendResponse As Boolean = True) As WebResponse
+    ' POST /me/events/{id}/accept — Accept a calendar event invitation
+    ' Scope: Calendars.ReadWrite
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/events/" & sEventId & "/accept"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Request.AddBodyParameter "comment", sComment
+    Request.AddBodyParameter "sendResponse", bSendResponse
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set AcceptEvent = Client.Execute(Request)
+        If AcceptEvent.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(AcceptEvent))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(AcceptEvent) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11210, "Graph.AcceptEvent", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function DeclineEvent(sUserPrincipal As String, sEventId As String, _
+    Optional sComment As String = "", Optional bSendResponse As Boolean = True) As WebResponse
+    ' POST /me/events/{id}/decline — Decline a calendar event invitation
+    ' Scope: Calendars.ReadWrite
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/events/" & sEventId & "/decline"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Request.AddBodyParameter "comment", sComment
+    Request.AddBodyParameter "sendResponse", bSendResponse
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set DeclineEvent = Client.Execute(Request)
+        If DeclineEvent.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(DeclineEvent))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(DeclineEvent) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11220, "Graph.DeclineEvent", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function TentativelyAcceptEvent(sUserPrincipal As String, sEventId As String, _
+    Optional sComment As String = "", Optional bSendResponse As Boolean = True) As WebResponse
+    ' POST /me/events/{id}/tentativelyAccept — Tentatively accept a calendar event
+    ' Scope: Calendars.ReadWrite
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/events/" & sEventId & "/tentativelyAccept"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Request.AddBodyParameter "comment", sComment
+    Request.AddBodyParameter "sendResponse", bSendResponse
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set TentativelyAcceptEvent = Client.Execute(Request)
+        If TentativelyAcceptEvent.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(TentativelyAcceptEvent))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(TentativelyAcceptEvent) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11230, "Graph.TentativelyAcceptEvent", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ForwardEvent(sUserPrincipal As String, sEventId As String, _
+    sToRecipients As String, Optional sComment As String = "") As WebResponse
+    ' POST /me/events/{id}/forward — Forward a calendar event to recipients
+    ' Scope: Calendars.Read
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/events/" & sEventId & "/forward"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim colRecipients As New Collection
+    FillEmailAddressCollection colRecipients, sToRecipients
+    
+    Request.AddBodyParameter "ToRecipients", colRecipients
+    Request.AddBodyParameter "Comment", sComment
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ForwardEvent = Client.Execute(Request)
+        If ForwardEvent.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ForwardEvent))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ForwardEvent) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11240, "Graph.ForwardEvent", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function GetFreeBusySchedule(sUserPrincipal As String, sSchedules As String, _
+    sStartDateTime As String, sEndDateTime As String, sTimeZone As String, _
+    Optional lIntervalMinutes As Long = 30) As WebResponse
+    ' POST /me/calendar/getSchedule — Get free/busy availability for users
+    ' Scope: Calendars.Read
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/calendar/getSchedule"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    ' Parse semicolon-delimited schedules into a collection of plain strings
+    Dim colSchedules As New Collection
+    Dim sTemp As String
+    sTemp = Replace(sSchedules, " ", "")
+    If Right(sTemp, 1) = ";" Then sTemp = Left(sTemp, Len(sTemp) - 1)
+    While InStr(sTemp, ";") > 0
+        colSchedules.Add Left(sTemp, InStr(sTemp, ";") - 1)
+        sTemp = Mid(sTemp, InStr(sTemp, ";") + 1)
+    Wend
+    If Len(sTemp) > 0 Then colSchedules.Add sTemp
+    
+    Dim dictStartTime As New Dictionary
+    dictStartTime.Add "dateTime", sStartDateTime
+    dictStartTime.Add "timeZone", sTimeZone
+    
+    Dim dictEndTime As New Dictionary
+    dictEndTime.Add "dateTime", sEndDateTime
+    dictEndTime.Add "timeZone", sTimeZone
+    
+    Request.AddBodyParameter "schedules", colSchedules
+    Request.AddBodyParameter "startTime", dictStartTime
+    Request.AddBodyParameter "endTime", dictEndTime
+    Request.AddBodyParameter "availabilityViewInterval", lIntervalMinutes
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set GetFreeBusySchedule = Client.Execute(Request)
+        If GetFreeBusySchedule.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(GetFreeBusySchedule))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(GetFreeBusySchedule) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11250, "Graph.GetFreeBusySchedule", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+
+' =============================================================================
+' Mail — Read & Organize
+' =============================================================================
+
+Public Function GetMessage(sUserPrincipal As String, sMessageId As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /me/messages/{id} — Retrieve a single message by ID
+    ' Scope: Mail.Read
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/messages/" & sMessageId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set GetMessage = Client.Execute(Request)
+        If GetMessage.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(GetMessage))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(GetMessage) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11130, "Graph.GetMessage", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function UpdateMessage(sUserPrincipal As String, sMessageId As String, _
+    dictUpdates As Dictionary) As WebResponse
+    ' PATCH /me/messages/{id} — Update fields on a message
+    ' Scope: Mail.ReadWrite
+    ' dictUpdates: Dictionary of field names -> new values
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/messages/" & sMessageId
+    Request.Method = WebMethod.HttpPatch
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim vKey As Variant
+    For Each vKey In dictUpdates.Keys
+        Request.AddBodyParameter CStr(vKey), dictUpdates(vKey)
+    Next vKey
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set UpdateMessage = Client.Execute(Request)
+        If UpdateMessage.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(UpdateMessage))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(UpdateMessage) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11140, "Graph.UpdateMessage", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function MoveMessage(sUserPrincipal As String, sMessageId As String, _
+    sDestinationId As String) As WebResponse
+    ' POST /me/messages/{id}/move — Move a message to a folder
+    ' Scope: Mail.ReadWrite
+    ' sDestinationId: well-known folder name (e.g. "deleteditems") or folder ID
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/messages/" & sMessageId & "/move"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Request.AddBodyParameter "destinationId", sDestinationId
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set MoveMessage = Client.Execute(Request)
+        If MoveMessage.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(MoveMessage))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(MoveMessage) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11150, "Graph.MoveMessage", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ListMailFolders(sUserPrincipal As String, _
+    Optional sSelectFields As String = "", _
+    Optional lTop As Long = 0) As WebResponse
+    ' GET /me/mailFolders — List mail folders
+    ' Scope: Mail.Read
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/mailFolders"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    If lTop > 0 Then
+        Request.AddQuerystringParam "$top", CStr(lTop)
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ListMailFolders = Client.Execute(Request)
+        If ListMailFolders.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ListMailFolders))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ListMailFolders) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11160, "Graph.ListMailFolders", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+
+' =============================================================================
+' Mail — Reply & Forward
+' =============================================================================
+
+Public Function ReplyToMessage(sUserPrincipal As String, sMessageId As String, _
+    sComment As String, Optional sAddRecipients As String = "") As WebResponse
+    ' POST /me/messages/{id}/reply — Reply to a message with optional additional recipients
+    ' Scope: Mail.Send
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/messages/" & sMessageId & "/reply"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Request.AddBodyParameter "comment", sComment
+    
+    If Len(Trim(sAddRecipients)) > 0 Then
+        Dim colToRecipients As New Collection
+        FillEmailAddressCollection colToRecipients, sAddRecipients
+        Dim dictMessage As New Dictionary
+        dictMessage.Add "toRecipients", colToRecipients
+        Request.AddBodyParameter "message", dictMessage
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ReplyToMessage = Client.Execute(Request)
+        If ReplyToMessage.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ReplyToMessage))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ReplyToMessage) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11170, "Graph.ReplyToMessage", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ReplyAllToMessage(sUserPrincipal As String, sMessageId As String, _
+    sComment As String) As WebResponse
+    ' POST /me/messages/{id}/replyAll — Reply-all to a message
+    ' Scope: Mail.Send
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/messages/" & sMessageId & "/replyAll"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Request.AddBodyParameter "comment", sComment
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ReplyAllToMessage = Client.Execute(Request)
+        If ReplyAllToMessage.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ReplyAllToMessage))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ReplyAllToMessage) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11180, "Graph.ReplyAllToMessage", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ForwardMessage(sUserPrincipal As String, sMessageId As String, _
+    sToRecipients As String, Optional sComment As String = "") As WebResponse
+    ' POST /me/messages/{id}/forward — Forward a message to recipients
+    ' Scope: Mail.Send
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/messages/" & sMessageId & "/forward"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim colToRecipients As New Collection
+    FillEmailAddressCollection colToRecipients, sToRecipients
+    Request.AddBodyParameter "toRecipients", colToRecipients
+    Request.AddBodyParameter "comment", sComment
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ForwardMessage = Client.Execute(Request)
+        If ForwardMessage.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ForwardMessage))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ForwardMessage) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11190, "Graph.ForwardMessage", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function

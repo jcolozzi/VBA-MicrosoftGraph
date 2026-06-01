@@ -17,6 +17,13 @@ VBA-MicrosoftGraph makes working with the [Microsoft Graph REST API](https://lea
 | `ListMessages` | List messages in a mail folder with optional `$select` projection |
 | `DeleteMessage` | Delete a message by ID |
 | `GetMailFolderID` | Resolve a mail folder name to its Graph ID |
+| `GetMessage` | Read a single message by ID with optional `$select` |
+| `UpdateMessage` | Update message properties (isRead, categories, flag, importance) |
+| `MoveMessage` | Move a message to another folder by name or ID |
+| `ListMailFolders` | List all mail folders with optional `$select` and `$top` |
+| `ReplyToMessage` | Reply to a message with optional additional recipients |
+| `ReplyAllToMessage` | Reply-all to a message |
+| `ForwardMessage` | Forward a message to new recipients |
 
 ### Calendar
 
@@ -28,6 +35,12 @@ VBA-MicrosoftGraph makes working with the [Microsoft Graph REST API](https://lea
 | `DeleteEvent` | Delete an event by ID |
 | `GetCalendarGroupID` | Resolve a calendar group name to its Graph ID |
 | `GetCalendarID` | Resolve a calendar name to its Graph ID |
+| `GetEvent` | Read a single event by ID with optional `$select` |
+| `AcceptEvent` | Accept a meeting invitation with optional comment |
+| `DeclineEvent` | Decline a meeting invitation with optional comment |
+| `TentativelyAcceptEvent` | Tentatively accept a meeting invitation |
+| `ForwardEvent` | Forward a calendar event to new recipients |
+| `GetFreeBusySchedule` | Get free/busy availability for multiple users over a time range |
 
 ### Contacts
 
@@ -205,6 +218,38 @@ Set oResponse = CreateEvent( _
 ├── EVALUATION.md                   Technical audit and change log
 └── LICENSE                         MIT License
 ```
+
+## What's New in v2.5
+
+### Mail — Read & Organize
+
+- **Read** — `GetMessage` retrieves a single message with optional `$select` field projection
+- **Update** — `UpdateMessage` patches message properties: mark read/unread (`isRead`), set categories, flag status, importance, and inference classification
+- **Move** — `MoveMessage` moves a message to any folder using well-known names (`Inbox`, `DeletedItems`, `Drafts`, `SentItems`, `Archive`) or folder IDs
+- **Folders** — `ListMailFolders` lists all mail folders with `$select` and `$top` support
+
+### Mail — Reply & Forward
+
+- **Reply** — `ReplyToMessage` replies to the sender with a comment and optional additional recipients
+- **Reply All** — `ReplyAllToMessage` replies to all recipients
+- **Forward** — `ForwardMessage` forwards a message to new recipients with an optional comment
+
+### Calendar — Read & RSVP
+
+- **Read** — `GetEvent` retrieves a single event with optional `$select`
+- **Accept** — `AcceptEvent` accepts a meeting invitation with optional comment and response control
+- **Decline** — `DeclineEvent` declines a meeting invitation
+- **Tentative** — `TentativelyAcceptEvent` tentatively accepts a meeting invitation
+- **Forward** — `ForwardEvent` forwards a calendar event to new recipients (PascalCase body keys per Graph spec)
+- **Free/Busy** — `GetFreeBusySchedule` checks availability for multiple users/rooms over a time range with configurable interval
+
+### Notes
+
+- No new OAuth scopes required — all 13 functions use existing `Mail.ReadWrite`, `Mail.Send`, `Calendars.ReadWrite`, and `Calendars.ReadWrite.Shared` scopes
+- All write/action functions include retry loops with 429 throttle handling and token refresh
+- Error numbers: 11130–11250 (non-overlapping with v2.4's 11060–11120)
+
+---
 
 ## What's New in v2.4
 
