@@ -63,6 +63,9 @@ Public Property Get Client() As WebClient
             Auth.AddScope "chat.create"
             Auth.AddScope "chatmessage.send"
             Auth.AddScope "channelmessage.read.all"
+            Auth.AddScope "sites.read.all"
+            Auth.AddScope "sites.readwrite.all"
+            Auth.AddScope "files.readwrite"
         Else
             Auth.AddScope ".default"
         End If
@@ -1681,3 +1684,390 @@ Public Function UpdateContact(sUserPrincipal As String, sContactId As String, _
 End Function
 
 
+' =============================================================================
+' SharePoint Sites & Lists
+' =============================================================================
+
+Public Function GetSite(sSiteId As String, Optional sSelectFields As String = "") As WebResponse
+    ' GET /sites/{SiteId}
+    ' Scope: Sites.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = "/sites/{SiteId}"
+    Request.AddUrlSegment "SiteId", sSiteId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Set GetSite = Client.Execute(Request)
+End Function
+
+Public Function ListSiteLists(sSiteId As String, Optional sSelectFields As String = "", Optional lTop As Long = 0) As WebResponse
+    ' GET /sites/{SiteId}/lists
+    ' Scope: Sites.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = "/sites/{SiteId}/lists"
+    Request.AddUrlSegment "SiteId", sSiteId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    If lTop > 0 Then
+        Request.AddQuerystringParam "$top", CStr(lTop)
+    End If
+    
+    Set ListSiteLists = Client.Execute(Request)
+End Function
+
+Public Function ListSiteListItems(sSiteId As String, sListId As String, Optional sSelectFields As String = "", Optional sFilter As String = "", Optional lTop As Long = 0) As WebResponse
+    ' GET /sites/{SiteId}/lists/{ListId}/items
+    ' Scope: Sites.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = "/sites/{SiteId}/lists/{ListId}/items"
+    Request.AddUrlSegment "SiteId", sSiteId
+    Request.AddUrlSegment "ListId", sListId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$expand", "fields(select=" & sSelectFields & ")"
+    Else
+        Request.AddQuerystringParam "$expand", "fields"
+    End If
+    If Len(sFilter) > 0 Then
+        Request.AddQuerystringParam "$filter", sFilter
+    End If
+    If lTop > 0 Then
+        Request.AddQuerystringParam "$top", CStr(lTop)
+    End If
+    
+    Set ListSiteListItems = Client.Execute(Request)
+End Function
+
+Public Function CreateListItem(sSiteId As String, sListId As String, dictFields As Dictionary) As WebResponse
+    ' POST /sites/{SiteId}/lists/{ListId}/items
+    ' Scope: Sites.ReadWrite.All
+    Dim Request As New WebRequest
+    Request.Resource = "/sites/{SiteId}/lists/{ListId}/items"
+    Request.AddUrlSegment "SiteId", sSiteId
+    Request.AddUrlSegment "ListId", sListId
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Request.AddBodyParameter "fields", dictFields
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set CreateListItem = Client.Execute(Request)
+        If CreateListItem.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(CreateListItem))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(CreateListItem) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11060, "Graph.CreateListItem", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function UpdateListItem(sSiteId As String, sListId As String, sItemId As String, dictFields As Dictionary) As WebResponse
+    ' PATCH /sites/{SiteId}/lists/{ListId}/items/{ItemId}/fields
+    ' Scope: Sites.ReadWrite.All
+    Dim Request As New WebRequest
+    Request.Resource = "/sites/{SiteId}/lists/{ListId}/items/{ItemId}/fields"
+    Request.AddUrlSegment "SiteId", sSiteId
+    Request.AddUrlSegment "ListId", sListId
+    Request.AddUrlSegment "ItemId", sItemId
+    Request.Method = WebMethod.HttpPatch
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim vKey As Variant
+    For Each vKey In dictFields.Keys
+        Request.AddBodyParameter CStr(vKey), dictFields(vKey)
+    Next vKey
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set UpdateListItem = Client.Execute(Request)
+        If UpdateListItem.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(UpdateListItem))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(UpdateListItem) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11070, "Graph.UpdateListItem", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function DeleteListItem(sSiteId As String, sListId As String, sItemId As String) As WebResponse
+    ' DELETE /sites/{SiteId}/lists/{ListId}/items/{ItemId}
+    ' Scope: Sites.ReadWrite.All
+    Dim Request As New WebRequest
+    Request.Resource = "/sites/{SiteId}/lists/{ListId}/items/{ItemId}"
+    Request.AddUrlSegment "SiteId", sSiteId
+    Request.AddUrlSegment "ListId", sListId
+    Request.AddUrlSegment "ItemId", sItemId
+    Request.Method = WebMethod.HttpDelete
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set DeleteListItem = Client.Execute(Request)
+        If DeleteListItem.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(DeleteListItem))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(DeleteListItem) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11080, "Graph.DeleteListItem", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+
+' =============================================================================
+' OneDrive Files & Folders
+' =============================================================================
+
+Public Function ListDriveChildren(sUserPrincipal As String, Optional sItemId As String = "", _
+    Optional sSelectFields As String = "", Optional lTop As Long = 0, _
+    Optional sOrderBy As String = "") As WebResponse
+    ' GET /me/drive/root/children  OR  /me/drive/items/{ItemId}/children
+    ' Scope: Files.Read
+    Dim Request As New WebRequest
+
+    If Len(sItemId) > 0 Then
+        Request.Resource = BuildResourcePath(sUserPrincipal) & "/drive/items/" & sItemId & "/children"
+    Else
+        Request.Resource = BuildResourcePath(sUserPrincipal) & "/drive/root/children"
+    End If
+
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    If lTop > 0 Then
+        Request.AddQuerystringParam "$top", CStr(lTop)
+    End If
+    If Len(sOrderBy) > 0 Then
+        Request.AddQuerystringParam "$orderby", sOrderBy
+    End If
+
+    Set ListDriveChildren = Client.Execute(Request)
+End Function
+
+Public Function DownloadDriveItem(sUserPrincipal As String, sItemId As String) As WebResponse
+    ' GET /me/drive/items/{ItemId}?$select=id,name,size,@microsoft.graph.downloadUrl
+    ' Scope: Files.Read
+    Dim Request As New WebRequest
+
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/drive/items/{ItemId}"
+    Request.AddUrlSegment "ItemId", sItemId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    Request.AddQuerystringParam "$select", "id,name,size,@microsoft.graph.downloadUrl"
+
+    Set DownloadDriveItem = Client.Execute(Request)
+End Function
+
+Public Function UploadSmallFile(sUserPrincipal As String, sParentPath As String, _
+    sFileName As String, sContent As String) As WebResponse
+    ' PUT /me/drive/root:/{ParentPath}/{FileName}:/content
+    ' Scope: Files.ReadWrite
+    Dim Request As New WebRequest
+
+    If Len(sParentPath) > 0 Then
+        Request.Resource = BuildResourcePath(sUserPrincipal) & "/drive/root:/" & sParentPath & "/" & sFileName & ":/content"
+    Else
+        Request.Resource = BuildResourcePath(sUserPrincipal) & "/drive/root:/" & sFileName & ":/content"
+    End If
+
+    Request.Method = WebMethod.HttpPut
+    Request.Format = WebFormat.JSON
+    Request.ContentType = "text/plain"
+    Request.Body = sContent
+    Request.AddHeader "client-request-id", CreateGUID()
+
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set UploadSmallFile = Client.Execute(Request)
+        If UploadSmallFile.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(UploadSmallFile))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(UploadSmallFile) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11090, "Graph.UploadSmallFile", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function CreateDriveFolder(sUserPrincipal As String, sFolderName As String, _
+    Optional sParentItemId As String = "", _
+    Optional sConflictBehavior As String = "rename") As WebResponse
+    ' POST /me/drive/root/children  OR  /me/drive/items/{ParentItemId}/children
+    ' Scope: Files.ReadWrite
+    Dim Request As New WebRequest
+
+    If Len(sParentItemId) > 0 Then
+        Request.Resource = BuildResourcePath(sUserPrincipal) & "/drive/items/{ParentItemId}/children"
+        Request.AddUrlSegment "ParentItemId", sParentItemId
+    Else
+        Request.Resource = BuildResourcePath(sUserPrincipal) & "/drive/root/children"
+    End If
+
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    Request.AddBodyParameter "name", sFolderName
+
+    Dim dictFolder As New Dictionary
+    Request.AddBodyParameter "folder", dictFolder
+    Request.AddBodyParameter "@microsoft.graph.conflictBehavior", sConflictBehavior
+
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set CreateDriveFolder = Client.Execute(Request)
+        If CreateDriveFolder.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(CreateDriveFolder))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(CreateDriveFolder) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11100, "Graph.CreateDriveFolder", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function CreateSharingLink(sUserPrincipal As String, sItemId As String, _
+    sLinkType As String, Optional sScope As String = "organization") As WebResponse
+    ' POST /me/drive/items/{ItemId}/createLink
+    ' Scope: Files.ReadWrite
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/drive/items/{ItemId}/createLink"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    Request.AddUrlSegment "ItemId", sItemId
+    Request.AddBodyParameter "type", sLinkType
+    Request.AddBodyParameter "scope", sScope
+
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set CreateSharingLink = Client.Execute(Request)
+        If CreateSharingLink.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(CreateSharingLink))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(CreateSharingLink) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11110, "Graph.CreateSharingLink", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function CopyDriveItem(sUserPrincipal As String, sItemId As String, _
+    sDestDriveId As String, sDestFolderId As String, _
+    Optional sNewName As String = "", _
+    Optional sConflictBehavior As String = "rename") As WebResponse
+    ' POST /me/drive/items/{ItemId}/copy — Returns 202 Accepted with monitor URL
+    ' Scope: Files.ReadWrite
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/drive/items/{ItemId}/copy"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    Request.AddUrlSegment "ItemId", sItemId
+
+    Dim dictParent As New Dictionary
+    dictParent.Add "driveId", sDestDriveId
+    dictParent.Add "id", sDestFolderId
+    Request.AddBodyParameter "parentReference", dictParent
+
+    If Len(sNewName) > 0 Then Request.AddBodyParameter "name", sNewName
+    If Len(sConflictBehavior) > 0 Then Request.AddQuerystringParam "@microsoft.graph.conflictBehavior", sConflictBehavior
+
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set CopyDriveItem = Client.Execute(Request)
+        If CopyDriveItem.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(CopyDriveItem))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(CopyDriveItem) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11120, "Graph.CopyDriveItem", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function

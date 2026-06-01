@@ -81,6 +81,18 @@ VBA-MicrosoftGraph makes working with the [Microsoft Graph REST API](https://lea
 | `ListSharePointSites` | Search for SharePoint sites |
 | `SearchOneDrive` | Search files in a user's OneDrive |
 | `SearchSharePoint` | Search across SharePoint and OneDrive via `/search/query` |
+| `GetSite` | Get a SharePoint site by ID or hostname path |
+| `ListSiteLists` | List all lists in a SharePoint site |
+| `ListSiteListItems` | List items in a SharePoint list with field expansion and filtering |
+| `CreateListItem` | Create a new item in a SharePoint list |
+| `UpdateListItem` | Update field values on a SharePoint list item |
+| `DeleteListItem` | Delete an item from a SharePoint list |
+| `ListDriveChildren` | List files and folders in a OneDrive directory |
+| `DownloadDriveItem` | Get a file's metadata and pre-authenticated download URL |
+| `UploadSmallFile` | Upload a text file to OneDrive (up to 250 MB) |
+| `CreateDriveFolder` | Create a new folder in OneDrive |
+| `CreateSharingLink` | Create a sharing link (view/edit) for a OneDrive item |
+| `CopyDriveItem` | Copy a file or folder to another location (async, returns monitor URL) |
 
 ### OneNote
 
@@ -194,6 +206,27 @@ Set oResponse = CreateEvent( _
 └── LICENSE                         MIT License
 ```
 
+## What's New in v2.4
+
+### SharePoint Lists CRUD
+
+- **Read** — `GetSite`, `ListSiteLists`, `ListSiteListItems` with `$expand=fields(select=...)`, `$filter`, and `$top`
+- **Write** — `CreateListItem`, `UpdateListItem`, `DeleteListItem` with retry loops
+- **Scopes** — `Sites.Read.All`, `Sites.ReadWrite.All` added to authorization_code flow
+- Access VBA can now read/write SharePoint lists as an external data source
+
+### OneDrive Files & Folders
+
+- **Browse** — `ListDriveChildren` with `$select`, `$top`, `$orderby`
+- **Download** — `DownloadDriveItem` returns metadata with `@microsoft.graph.downloadUrl` (avoids 302 redirect handling)
+- **Upload** — `UploadSmallFile` for text files up to 250 MB via PUT
+- **Folders** — `CreateDriveFolder` with conflict behavior (`rename`/`fail`/`replace`)
+- **Sharing** — `CreateSharingLink` generates view/edit/embed links with organization/anonymous scope
+- **Copy** — `CopyDriveItem` async copy with monitor URL, conflict behavior, and optional rename
+- **Scope** — `Files.ReadWrite` added to authorization_code flow
+
+---
+
 ## What's New in v2.3
 
 ### Teams Messaging
@@ -287,5 +320,5 @@ See [EVALUATION.md](EVALUATION.md) for the full technical audit.
 ## About
 
 - Original author: Maria Barnes
-- v2.1 maintained by: John Colozzi and Github Copilot
+- v2.2+ maintained by: John Colozzi and Github Copilot
 - License: MIT
