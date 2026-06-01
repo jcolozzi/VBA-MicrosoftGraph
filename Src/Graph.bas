@@ -58,6 +58,11 @@ Public Property Get Client() As WebClient
             Auth.AddScope "calendars.readwrite.shared"
             Auth.AddScope "group.readwrite.all"
             Auth.AddScope "contacts.readwrite"
+            Auth.AddScope "channelmessage.send"
+            Auth.AddScope "chat.readbasic"
+            Auth.AddScope "chat.create"
+            Auth.AddScope "chatmessage.send"
+            Auth.AddScope "channelmessage.read.all"
         Else
             Auth.AddScope ".default"
         End If
@@ -1233,6 +1238,224 @@ Public Function CreateOnlineMeeting(sSubject As String, dtStart As Date, dtEnd A
     Wend
     If lRetryCount >= MAX_RETRIES Then
         Err.Raise vbObjectError + 11050, "Graph.CreateOnlineMeeting", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+
+' =============================================================================
+' Teams Messaging
+' =============================================================================
+
+Public Function SendChannelMessage(sTeamId As String, sChannelId As String, sContent As String, _
+    Optional sContentType As String = "text") As WebResponse
+    ' POST /teams/{TeamId}/channels/{ChannelId}/messages — Send a message to a channel
+    ' Scope: ChannelMessage.Send (delegated only)
+    Dim Request As New WebRequest
+    Request.Resource = "/teams/{TeamId}/channels/{ChannelId}/messages"
+    Request.AddUrlSegment "TeamId", sTeamId
+    Request.AddUrlSegment "ChannelId", sChannelId
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim dictBody As New Dictionary
+    dictBody.Add "contentType", sContentType
+    dictBody.Add "content", sContent
+    
+    Request.AddBodyParameter "body", dictBody
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set SendChannelMessage = Client.Execute(Request)
+        If SendChannelMessage.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(SendChannelMessage))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(SendChannelMessage) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11050, "Graph.SendChannelMessage", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ReplyToChannelMessage(sTeamId As String, sChannelId As String, sMessageId As String, _
+    sContent As String, Optional sContentType As String = "text") As WebResponse
+    ' POST /teams/{TeamId}/channels/{ChannelId}/messages/{MessageId}/replies — Reply to a channel message
+    ' Scope: ChannelMessage.Send (delegated only)
+    Dim Request As New WebRequest
+    Request.Resource = "/teams/{TeamId}/channels/{ChannelId}/messages/{MessageId}/replies"
+    Request.AddUrlSegment "TeamId", sTeamId
+    Request.AddUrlSegment "ChannelId", sChannelId
+    Request.AddUrlSegment "MessageId", sMessageId
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim dictBody As New Dictionary
+    dictBody.Add "contentType", sContentType
+    dictBody.Add "content", sContent
+    
+    Request.AddBodyParameter "body", dictBody
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ReplyToChannelMessage = Client.Execute(Request)
+        If ReplyToChannelMessage.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ReplyToChannelMessage))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ReplyToChannelMessage) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11050, "Graph.ReplyToChannelMessage", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function SendChatMessage(sChatId As String, sContent As String, _
+    Optional sContentType As String = "text") As WebResponse
+    ' POST /chats/{ChatId}/messages — Send a message to a chat (DM or group)
+    ' Scope: ChatMessage.Send (delegated only)
+    Dim Request As New WebRequest
+    Request.Resource = "/chats/{ChatId}/messages"
+    Request.AddUrlSegment "ChatId", sChatId
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim dictBody As New Dictionary
+    dictBody.Add "contentType", sContentType
+    dictBody.Add "content", sContent
+    
+    Request.AddBodyParameter "body", dictBody
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set SendChatMessage = Client.Execute(Request)
+        If SendChatMessage.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(SendChatMessage))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(SendChatMessage) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11050, "Graph.SendChatMessage", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ListChats(Optional sSelectFields As String = "", _
+    Optional lTop As Long = 0) As WebResponse
+    ' GET /me/chats — Lists the user's chats (1:1, group, meeting)
+    ' Scope: Chat.ReadBasic (delegated)
+    Dim Request As New WebRequest
+    Request.Resource = "/me/chats"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    If lTop > 0 Then
+        Request.AddQuerystringParam "$top", CStr(lTop)
+    End If
+    
+    Set ListChats = Client.Execute(Request)
+End Function
+
+Public Function ListChannelMessages(sTeamId As String, sChannelId As String, _
+    Optional lTop As Long = 0) As WebResponse
+    ' GET /teams/{TeamId}/channels/{ChannelId}/messages — Lists messages in a channel
+    ' Scope: ChannelMessage.Read.All (delegated)
+    Dim Request As New WebRequest
+    Request.Resource = "/teams/{TeamId}/channels/{ChannelId}/messages"
+    Request.AddUrlSegment "TeamId", sTeamId
+    Request.AddUrlSegment "ChannelId", sChannelId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If lTop > 0 Then
+        Request.AddQuerystringParam "$top", CStr(lTop)
+    End If
+    
+    Set ListChannelMessages = Client.Execute(Request)
+End Function
+
+Public Function CreateChat(sChatType As String, sUserIds As String, _
+    Optional sTopic As String = "") As WebResponse
+    ' POST /chats — Creates a new 1:1 or group chat
+    ' Scope: Chat.Create (delegated)
+    Dim Request As New WebRequest
+    Request.Resource = "/chats"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim colMembers As New Collection
+    Dim vUsers As Variant
+    Dim i As Long
+    Dim dictMember As Dictionary
+    
+    vUsers = Split(sUserIds, ";")
+    For i = LBound(vUsers) To UBound(vUsers)
+        If Len(Trim(vUsers(i))) > 0 Then
+            Set dictMember = New Dictionary
+            dictMember.Add "@odata.type", "#microsoft.graph.aadUserConversationMember"
+            dictMember.Add "roles", Array("owner")
+            dictMember.Add "user@odata.bind", "https://graph.microsoft.com/v1.0/users('" & Trim(vUsers(i)) & "')"
+            colMembers.Add dictMember
+        End If
+    Next i
+    
+    Request.AddBodyParameter "chatType", sChatType
+    If Len(sTopic) > 0 Then
+        Request.AddBodyParameter "topic", sTopic
+    End If
+    Request.AddBodyParameter "members", colMembers
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set CreateChat = Client.Execute(Request)
+        If CreateChat.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(CreateChat))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(CreateChat) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11050, "Graph.CreateChat", "Max retries exceeded after " & MAX_RETRIES & " attempts"
     End If
 End Function
 

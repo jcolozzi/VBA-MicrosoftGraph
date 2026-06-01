@@ -67,6 +67,12 @@ VBA-MicrosoftGraph makes working with the [Microsoft Graph REST API](https://lea
 | `ListJoinedTeams` | List teams the user has joined |
 | `ListTeamsChannels` | List channels in a team |
 | `CreateOnlineMeeting` | Create a Teams online meeting |
+| `SendChannelMessage` | Send a message to a Teams channel |
+| `ReplyToChannelMessage` | Reply to a message in a Teams channel |
+| `SendChatMessage` | Send a direct/group chat message |
+| `ListChats` | List the user's chats (1:1, group, meeting) |
+| `ListChannelMessages` | List messages in a Teams channel |
+| `CreateChat` | Create a new 1:1 or group chat |
 
 ### SharePoint & OneDrive
 
@@ -187,6 +193,18 @@ Set oResponse = CreateEvent( _
 ├── EVALUATION.md                   Technical audit and change log
 └── LICENSE                         MIT License
 ```
+
+## What's New in v2.3
+
+### Teams Messaging
+
+- **Send messages** — `SendChannelMessage`, `ReplyToChannelMessage`, `SendChatMessage`
+- **Read messages** — `ListChats`, `ListChannelMessages`
+- **Create chats** — `CreateChat` with semicolon-delimited user IDs/UPNs, supports 1:1 and group chat types
+- **Scopes** — `ChannelMessage.Send`, `ChatMessage.Send`, `Chat.ReadBasic`, `Chat.Create`, `ChannelMessage.Read.All` added to authorization_code flow
+- **Delegated only** — Teams messaging requires interactive sign-in (authorization_code or device_code); client_credentials cannot send messages
+
+---
 
 ## What's New in v2.2
 
