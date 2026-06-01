@@ -69,6 +69,8 @@ Public Property Get Client() As WebClient
             Auth.AddScope "user.read.all"
             Auth.AddScope "people.read"
             Auth.AddScope "groupmember.readwrite.all"
+            Auth.AddScope "tasks.readwrite"
+            Auth.AddScope "notes.readwrite"
         Else
             Auth.AddScope ".default"
         End If
@@ -1108,13 +1110,14 @@ End Function
 
 
 ' =============================================================================
-' Tasks & Planner
+' To Do — Tasks
 ' =============================================================================
 
 Public Function CreateTask(sTitle As String, Optional sBodyContent As String = "", _
     Optional sDueDate As String = "", Optional sImportance As String = "normal") As WebResponse
-    ' POST /me/todo/lists/Tasks/tasks — Creates a To-Do task
+    ' POST /me/todo/lists/Tasks/tasks — Creates a To-Do task (legacy — uses default "Tasks" list)
     ' Scope: Tasks.ReadWrite
+    ' NOTE: Prefer CreateToDoTask with explicit sTaskListId for reliability
     Dim Request As New WebRequest
     Request.Resource = "/me/todo/lists/Tasks/tasks"
     Request.Method = WebMethod.HttpPOST
@@ -1160,6 +1163,279 @@ Public Function CreateTask(sTitle As String, Optional sBodyContent As String = "
     End If
 End Function
 
+Public Function ListTaskLists(Optional sSelectFields As String = "") As WebResponse
+    ' GET /me/todo/lists — Returns all To Do task lists
+    ' Scope: Tasks.ReadWrite
+    Dim Request As New WebRequest
+    Request.Resource = "/me/todo/lists"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ListTaskLists = Client.Execute(Request)
+        If ListTaskLists.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ListTaskLists))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ListTaskLists) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11390, "Graph.ListTaskLists", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function CreateTaskList(sDisplayName As String) As WebResponse
+    ' POST /me/todo/lists — Creates a new To Do task list
+    ' Scope: Tasks.ReadWrite
+    Dim Request As New WebRequest
+    Request.Resource = "/me/todo/lists"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Request.AddBodyParameter "displayName", sDisplayName
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set CreateTaskList = Client.Execute(Request)
+        If CreateTaskList.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(CreateTaskList))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(CreateTaskList) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11400, "Graph.CreateTaskList", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ListToDoTasks(sTaskListId As String, Optional sSelectFields As String = "") As WebResponse
+    ' GET /me/todo/lists/{TaskListId}/tasks — Returns tasks in a To Do list
+    ' Scope: Tasks.ReadWrite
+    Dim Request As New WebRequest
+    Request.Resource = "/me/todo/lists/{TaskListId}/tasks"
+    Request.AddUrlSegment "TaskListId", sTaskListId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ListToDoTasks = Client.Execute(Request)
+        If ListToDoTasks.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ListToDoTasks))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ListToDoTasks) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11410, "Graph.ListToDoTasks", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function GetToDoTask(sTaskListId As String, sTaskId As String, Optional sSelectFields As String = "") As WebResponse
+    ' GET /me/todo/lists/{TaskListId}/tasks/{TaskId} — Returns a single To Do task
+    ' Scope: Tasks.ReadWrite
+    Dim Request As New WebRequest
+    Request.Resource = "/me/todo/lists/{TaskListId}/tasks/{TaskId}"
+    Request.AddUrlSegment "TaskListId", sTaskListId
+    Request.AddUrlSegment "TaskId", sTaskId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set GetToDoTask = Client.Execute(Request)
+        If GetToDoTask.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(GetToDoTask))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(GetToDoTask) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11420, "Graph.GetToDoTask", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function CreateToDoTask(sTaskListId As String, sTitle As String, Optional sBodyContent As String = "", _
+    Optional sDueDate As String = "", Optional sImportance As String = "normal", _
+    Optional sStatus As String = "") As WebResponse
+    ' POST /me/todo/lists/{TaskListId}/tasks — Creates a task in a specific To Do list
+    ' Scope: Tasks.ReadWrite
+    Dim Request As New WebRequest
+    Request.Resource = "/me/todo/lists/{TaskListId}/tasks"
+    Request.AddUrlSegment "TaskListId", sTaskListId
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Request.AddBodyParameter "title", sTitle
+    Request.AddBodyParameter "importance", sImportance
+    
+    If Len(sBodyContent) > 0 Then
+        Dim dictBody As New Dictionary
+        dictBody.Add "contentType", "text"
+        dictBody.Add "content", sBodyContent
+        Request.AddBodyParameter "body", dictBody
+    End If
+    
+    If Len(sDueDate) > 0 Then
+        Dim dictDue As New Dictionary
+        dictDue.Add "dateTime", sDueDate
+        dictDue.Add "timeZone", "UTC"
+        Request.AddBodyParameter "dueDateTime", dictDue
+    End If
+    
+    If Len(sStatus) > 0 Then
+        Request.AddBodyParameter "status", sStatus
+    End If
+    
+    Dim sRetryStatus As String
+    Dim lRetryCount As Long
+    sRetryStatus = "Retry"
+    lRetryCount = 0
+    While sRetryStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set CreateToDoTask = Client.Execute(Request)
+        If CreateToDoTask.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(CreateToDoTask))
+            sRetryStatus = "Retry"
+        ElseIf IsTokenExpiredError(CreateToDoTask) Then
+            ClearAuthCodes
+            sRetryStatus = "Retry"
+        Else
+            sRetryStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11430, "Graph.CreateToDoTask", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function UpdateToDoTask(sTaskListId As String, sTaskId As String, dictUpdates As Dictionary) As WebResponse
+    ' PATCH /me/todo/lists/{TaskListId}/tasks/{TaskId} — Updates fields on a To Do task
+    ' Scope: Tasks.ReadWrite
+    ' dictUpdates: Dictionary of field names to new values
+    Dim Request As New WebRequest
+    Request.Resource = "/me/todo/lists/{TaskListId}/tasks/{TaskId}"
+    Request.AddUrlSegment "TaskListId", sTaskListId
+    Request.AddUrlSegment "TaskId", sTaskId
+    Request.Method = WebMethod.HttpPatch
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim vKey As Variant
+    For Each vKey In dictUpdates.Keys
+        Request.AddBodyParameter CStr(vKey), dictUpdates(vKey)
+    Next vKey
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set UpdateToDoTask = Client.Execute(Request)
+        If UpdateToDoTask.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(UpdateToDoTask))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(UpdateToDoTask) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11440, "Graph.UpdateToDoTask", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function DeleteToDoTask(sTaskListId As String, sTaskId As String) As WebResponse
+    ' DELETE /me/todo/lists/{TaskListId}/tasks/{TaskId} — Deletes a To Do task
+    ' Scope: Tasks.ReadWrite
+    Dim Request As New WebRequest
+    Request.Resource = "/me/todo/lists/{TaskListId}/tasks/{TaskId}"
+    Request.AddUrlSegment "TaskListId", sTaskListId
+    Request.AddUrlSegment "TaskId", sTaskId
+    Request.Method = WebMethod.HttpDelete
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set DeleteToDoTask = Client.Execute(Request)
+        If DeleteToDoTask.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(DeleteToDoTask))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(DeleteToDoTask) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11450, "Graph.DeleteToDoTask", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+
+' =============================================================================
+' Planner
+' =============================================================================
+
 Public Function ListPlannerTasks(Optional sSelectFields As String = "") As WebResponse
     ' GET /me/planner/tasks — Lists the user's Planner tasks
     ' Scope: Tasks.Read
@@ -1173,7 +1449,315 @@ Public Function ListPlannerTasks(Optional sSelectFields As String = "") As WebRe
         Request.AddQuerystringParam "$select", sSelectFields
     End If
     
-    Set ListPlannerTasks = Client.Execute(Request)
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ListPlannerTasks = Client.Execute(Request)
+        If ListPlannerTasks.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ListPlannerTasks))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ListPlannerTasks) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11460, "Graph.ListPlannerTasks", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ListPlannerPlans(sGroupId As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /groups/{groupId}/planner/plans — List plans for a group
+    ' Scope: Group.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = "/groups/{GroupId}/planner/plans"
+    Request.AddUrlSegment "GroupId", sGroupId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ListPlannerPlans = Client.Execute(Request)
+        If ListPlannerPlans.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ListPlannerPlans))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ListPlannerPlans) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11470, "Graph.ListPlannerPlans", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function GetPlannerPlan(sPlanId As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /planner/plans/{planId} — Get a single plan (includes @odata.etag)
+    ' Scope: Group.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = "/planner/plans/{PlanId}"
+    Request.AddUrlSegment "PlanId", sPlanId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set GetPlannerPlan = Client.Execute(Request)
+        If GetPlannerPlan.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(GetPlannerPlan))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(GetPlannerPlan) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11480, "Graph.GetPlannerPlan", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ListPlannerPlanTasks(sPlanId As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /planner/plans/{planId}/tasks — List tasks in a plan
+    ' Scope: Group.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = "/planner/plans/{PlanId}/tasks"
+    Request.AddUrlSegment "PlanId", sPlanId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ListPlannerPlanTasks = Client.Execute(Request)
+        If ListPlannerPlanTasks.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ListPlannerPlanTasks))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ListPlannerPlanTasks) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11490, "Graph.ListPlannerPlanTasks", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function CreatePlannerTask(sPlanId As String, sTitle As String, _
+    Optional sBucketId As String = "", _
+    Optional sAssignToUserId As String = "", _
+    Optional lPriority As Long = -1, _
+    Optional sDueDateTime As String = "", _
+    Optional sStartDateTime As String = "") As WebResponse
+    ' POST /planner/tasks — Create a new Planner task
+    ' Scope: Group.ReadWrite.All
+    Dim Request As New WebRequest
+    Request.Resource = "/planner/tasks"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Request.AddBodyParameter "planId", sPlanId
+    Request.AddBodyParameter "title", sTitle
+    
+    If Len(sBucketId) > 0 Then
+        Request.AddBodyParameter "bucketId", sBucketId
+    End If
+    
+    If lPriority >= 0 Then
+        Request.AddBodyParameter "priority", lPriority
+    End If
+    
+    If Len(sDueDateTime) > 0 Then
+        Request.AddBodyParameter "dueDateTime", sDueDateTime
+    End If
+    
+    If Len(sStartDateTime) > 0 Then
+        Request.AddBodyParameter "startDateTime", sStartDateTime
+    End If
+    
+    If Len(sAssignToUserId) > 0 Then
+        Dim dictAssignments As New Dictionary
+        Dim dictAssignment As New Dictionary
+        dictAssignment.Add "@odata.type", "microsoft.graph.plannerAssignment"
+        dictAssignment.Add "orderHint", " !"
+        dictAssignments.Add sAssignToUserId, dictAssignment
+        Request.AddBodyParameter "assignments", dictAssignments
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set CreatePlannerTask = Client.Execute(Request)
+        If CreatePlannerTask.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(CreatePlannerTask))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(CreatePlannerTask) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11500, "Graph.CreatePlannerTask", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function GetPlannerTask(sTaskId As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /planner/tasks/{taskId} — Get a single task (includes @odata.etag)
+    ' Scope: Group.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = "/planner/tasks/{TaskId}"
+    Request.AddUrlSegment "TaskId", sTaskId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set GetPlannerTask = Client.Execute(Request)
+        If GetPlannerTask.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(GetPlannerTask))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(GetPlannerTask) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11510, "Graph.GetPlannerTask", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function UpdatePlannerTask(sTaskId As String, sEtag As String, _
+    dictUpdates As Dictionary) As WebResponse
+    ' PATCH /planner/tasks/{taskId} — Update fields on a Planner task
+    ' Scope: Group.ReadWrite.All
+    ' sEtag: Required — obtain from GetPlannerTask response @odata.etag
+    Dim Request As New WebRequest
+    Request.Resource = "/planner/tasks/{TaskId}"
+    Request.AddUrlSegment "TaskId", sTaskId
+    Request.Method = WebMethod.HttpPatch
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    Request.AddHeader "If-Match", sEtag
+    
+    Dim vKey As Variant
+    For Each vKey In dictUpdates.Keys
+        Request.AddBodyParameter CStr(vKey), dictUpdates(vKey)
+    Next vKey
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set UpdatePlannerTask = Client.Execute(Request)
+        If UpdatePlannerTask.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(UpdatePlannerTask))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(UpdatePlannerTask) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11520, "Graph.UpdatePlannerTask", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ListPlannerBuckets(sPlanId As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /planner/plans/{planId}/buckets — List buckets in a plan
+    ' Scope: Group.Read.All
+    Dim Request As New WebRequest
+    Request.Resource = "/planner/plans/{PlanId}/buckets"
+    Request.AddUrlSegment "PlanId", sPlanId
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ListPlannerBuckets = Client.Execute(Request)
+        If ListPlannerBuckets.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ListPlannerBuckets))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ListPlannerBuckets) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11530, "Graph.ListPlannerBuckets", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
 End Function
 
 
@@ -1538,7 +2122,7 @@ End Function
 
 
 ' =============================================================================
-' OneNote
+' OneNote (delegated permissions only — no app-only/client_credentials support)
 ' =============================================================================
 
 Public Function ListOneNoteNotebooks(sUserPrincipal As String, _
@@ -1555,7 +2139,198 @@ Public Function ListOneNoteNotebooks(sUserPrincipal As String, _
         Request.AddQuerystringParam "$select", sSelectFields
     End If
     
-    Set ListOneNoteNotebooks = Client.Execute(Request)
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ListOneNoteNotebooks = Client.Execute(Request)
+        If ListOneNoteNotebooks.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ListOneNoteNotebooks))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ListOneNoteNotebooks) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11540, "Graph.ListOneNoteNotebooks", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ListOneNoteSections(sUserPrincipal As String, sNotebookId As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /me/onenote/notebooks/{notebookId}/sections — List sections in a notebook
+    ' Scope: Notes.Read
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/onenote/notebooks/" & sNotebookId & "/sections"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ListOneNoteSections = Client.Execute(Request)
+        If ListOneNoteSections.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ListOneNoteSections))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ListOneNoteSections) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11550, "Graph.ListOneNoteSections", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function ListOneNotePages(sUserPrincipal As String, sSectionId As String, _
+    Optional sSelectFields As String = "") As WebResponse
+    ' GET /me/onenote/sections/{sectionId}/pages — List pages in a section
+    ' Scope: Notes.Read
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/onenote/sections/" & sSectionId & "/pages"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    If Len(sSelectFields) > 0 Then
+        Request.AddQuerystringParam "$select", sSelectFields
+    End If
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set ListOneNotePages = Client.Execute(Request)
+        If ListOneNotePages.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(ListOneNotePages))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(ListOneNotePages) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11560, "Graph.ListOneNotePages", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function GetOneNotePageContent(sUserPrincipal As String, sPageId As String) As WebResponse
+    ' GET /me/onenote/pages/{pageId}/content — Returns page HTML content
+    ' Scope: Notes.Read
+    ' Returns HTML content, not JSON — use WebResponse.Content for the raw HTML
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/onenote/pages/" & sPageId & "/content"
+    Request.Method = WebMethod.HttpGet
+    Request.Format = WebFormat.PlainText
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set GetOneNotePageContent = Client.Execute(Request)
+        If GetOneNotePageContent.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(GetOneNotePageContent))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(GetOneNotePageContent) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11570, "Graph.GetOneNotePageContent", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function CreateOneNotePage(sUserPrincipal As String, sSectionId As String, _
+    sHtmlContent As String) As WebResponse
+    ' POST /me/onenote/sections/{sectionId}/pages — Creates a page with HTML content
+    ' Scope: Notes.ReadWrite
+    ' Request body is HTML, not JSON
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/onenote/sections/" & sSectionId & "/pages"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.PlainText
+    Request.ContentType = "text/html"
+    Request.Body = sHtmlContent
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set CreateOneNotePage = Client.Execute(Request)
+        If CreateOneNotePage.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(CreateOneNotePage))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(CreateOneNotePage) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11580, "Graph.CreateOneNotePage", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
+End Function
+
+Public Function CreateOneNoteNotebook(sUserPrincipal As String, sDisplayName As String) As WebResponse
+    ' POST /me/onenote/notebooks — Creates a new notebook
+    ' Scope: Notes.ReadWrite
+    Dim Request As New WebRequest
+    Request.Resource = BuildResourcePath(sUserPrincipal) & "/onenote/notebooks"
+    Request.Method = WebMethod.HttpPOST
+    Request.Format = WebFormat.JSON
+    Request.AddHeader "client-request-id", CreateGUID()
+    
+    Request.AddBodyParameter "displayName", sDisplayName
+    
+    Dim sStatus As String
+    Dim lRetryCount As Long
+    sStatus = "Retry"
+    lRetryCount = 0
+    While sStatus = "Retry" And lRetryCount < MAX_RETRIES
+        lRetryCount = lRetryCount + 1
+        Set CreateOneNoteNotebook = Client.Execute(Request)
+        If CreateOneNoteNotebook.StatusCode = 429 Then
+            Application.Wait Now + TimeSerial(0, 0, GetRetryAfterSeconds(CreateOneNoteNotebook))
+            sStatus = "Retry"
+        ElseIf IsTokenExpiredError(CreateOneNoteNotebook) Then
+            ClearAuthCodes
+            sStatus = "Retry"
+        Else
+            sStatus = "Done"
+        End If
+    Wend
+    If lRetryCount >= MAX_RETRIES Then
+        Err.Raise vbObjectError + 11590, "Graph.CreateOneNoteNotebook", "Max retries exceeded after " & MAX_RETRIES & " attempts"
+    End If
 End Function
 
 

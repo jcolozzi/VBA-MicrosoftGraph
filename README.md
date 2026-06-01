@@ -232,6 +232,47 @@ Set oResponse = CreateEvent( _
 └── LICENSE                         MIT License
 ```
 
+## What's New in v2.7
+
+### To Do — Full CRUD
+
+- **List** — `ListTaskLists` returns all To Do task lists (id, displayName, wellknownListName)
+- **Create** — `CreateTaskList` creates a new named task list
+- **Read** — `ListToDoTasks` lists tasks in a specific list; `GetToDoTask` retrieves a single task by ID
+- **Create** — `CreateToDoTask` creates a task in any list (title, body, dueDate, importance, status) — replaces the legacy `CreateTask` which hardcoded the default "Tasks" list
+- **Update** — `UpdateToDoTask` patches any task fields via a Dictionary (status, title, dueDateTime, importance, etc.)
+- **Delete** — `DeleteToDoTask` removes a task by ID
+
+### Planner — Plans, Tasks & Buckets
+
+- **Plans** — `ListPlannerPlans` lists plans for an M365 group; `GetPlannerPlan` retrieves a plan by ID (returns `@odata.etag`)
+- **Tasks** — `ListPlannerPlanTasks` lists tasks in a plan; `CreatePlannerTask` creates a task with optional bucket, assignee, priority (0–10), and due/start dates; `GetPlannerTask` retrieves a task (returns `@odata.etag`); `UpdatePlannerTask` patches task fields (requires `sEtag` from prior GET for `If-Match` header)
+- **Buckets** — `ListPlannerBuckets` lists board columns (buckets) in a plan
+- **Fix** — `ListPlannerTasks` now includes retry loop with 429 throttle handling (was missing)
+
+### OneNote — Notebooks, Sections & Pages
+
+- **Navigate** — `ListOneNoteSections` lists sections in a notebook; `ListOneNotePages` lists pages in a section
+- **Read** — `GetOneNotePageContent` retrieves page content as raw HTML (uses `PlainText` format, not JSON)
+- **Create** — `CreateOneNotePage` creates a page from HTML content (`Content-Type: text/html`); `CreateOneNoteNotebook` creates a new notebook
+- **Fix** — `ListOneNoteNotebooks` now includes retry loop with 429 throttle handling (was missing)
+- **Note** — OneNote API does **not** support app-only (client_credentials) authentication — delegated permissions only
+
+### New OAuth Scopes
+
+- `Tasks.ReadWrite` — To Do task lists and tasks (read/write)
+- `Notes.ReadWrite` — OneNote notebooks, sections, and pages (read/write)
+
+### Notes
+
+- All 19 new functions include retry loops with 429 throttle handling and token refresh
+- 2 existing functions (`ListPlannerTasks`, `ListOneNoteNotebooks`) upgraded with retry loops
+- Error numbers: 11390–11590 (non-overlapping with v2.6's 11260–11380)
+- Planner PATCH/DELETE require `If-Match` etag header — call `GetPlannerTask` first to obtain the etag
+- No new Planner scopes needed — existing `Group.ReadWrite.All` covers all Planner operations
+
+---
+
 ## What's New in v2.6
 
 ### Contacts — Read & Manage
